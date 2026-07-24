@@ -198,9 +198,14 @@ function Counter({ state, setState, notify }: { state: State; setState: Dispatch
         <button data-testid="button-confirm-qty" onClick={() => {
           const qty = Number(promptQty.currentQty);
           if (qty > 0 && qty <= promptQty.product.stock) {
-            setQty(promptQty.product.id, qty);
+            setCart((c) => {
+              if (c.some((i) => i.productId === promptQty.product.id)) {
+                return c.map((i) => i.productId === promptQty.product.id ? { ...i, qty } : i);
+              }
+              return [...c, { productId: promptQty.product.id, qty }];
+            });
             setPromptQty(null);
-            notify(`${promptQty.product.name} quantity updated`);
+            notify(`${promptQty.product.name} added to basket`);
           } else {
             notify('Invalid quantity or out of stock');
           }
