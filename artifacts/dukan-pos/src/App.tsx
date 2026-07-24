@@ -292,19 +292,20 @@ function Counter({ state, setState, notify, session }: { state: State; setState:
         }} className="w-full rounded-xl bg-primary py-3 text-xs font-bold text-primary-foreground">Confirm quantity</button>
       </div>
     </Modal>}
-    {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} />}
+    {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} session={session} />}
   </>;
 }
 
 function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) { return <div className="no-print fixed inset-0 z-50 grid place-items-center bg-[#182433]/55 p-4"><div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-2xl animate-rise"><div className="flex items-center justify-between"><h2 className="font-display text-2xl">{title}</h2><button data-testid="button-close-modal" onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><X size={18} /></button></div><div className="mt-5">{children}</div></div></div>; }
 
-function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
+function ReceiptModal({ sale, onClose, session }: { sale: Sale; onClose: () => void; session: any }) {
+  const storeName = session?.user?.user_metadata?.storeName || 'My Shop';
   return <div className="receipt-overlay fixed inset-0 z-50 grid place-items-center bg-[#182433]/55 p-4">
     <style>{`@media print { main > *:not(.receipt-overlay) { display: none !important; } }`}</style>
     <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-2xl animate-rise">
       <div className="no-print flex items-center justify-between"><div><p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Saved transaction</p><h2 className="mt-1 font-display text-2xl">Receipt ready</h2></div><button data-testid="button-close-receipt" onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><X size={18} /></button></div>
       <div className="print-receipt mt-5 rounded-xl border border-dashed border-border bg-[#fffdf8] p-5 font-mono text-xs">
-        <div className="text-center"><div className="font-display text-2xl text-primary">dukan</div><p className="mt-1 text-[10px] text-muted-foreground">Al-Khan General Store · Lahore</p><p className="mt-1 text-[10px] text-muted-foreground">{new Date(sale.createdAt).toLocaleString('en-PK')}</p><p className="mt-1 text-[10px] uppercase text-muted-foreground">{sale.type === 'cash' ? 'Cash sale' : 'Udhaar sale'}</p></div>
+        <div className="text-center"><div className="font-display text-2xl text-primary">dukan</div><p className="mt-1 text-[10px] text-muted-foreground">{storeName}</p><p className="mt-1 text-[10px] text-muted-foreground">{new Date(sale.createdAt).toLocaleString('en-PK')}</p><p className="mt-1 text-[10px] uppercase text-muted-foreground">{sale.type === 'cash' ? 'Cash sale' : 'Udhaar sale'}</p></div>
         <div className="my-4 border-t border-dashed border-border" />
         {sale.items.map((item) => <div className="flex justify-between gap-4 py-1" key={`${sale.id}-${item.productId}`}><span>{item.name} × {item.qty}</span><span>{money(item.price * item.qty)}</span></div>)}
         <div className="my-3 border-t border-dashed border-border" />
@@ -361,7 +362,7 @@ function Summary({ state, session }: { state: State; session: any }) {
     <div className="my-4 border-t border-dashed border-border" />
     <div className="text-center text-[10px] text-muted-foreground">System generated report</div>
   </div>
-  {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} />}</>;
+  {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} session={session} />}</>;
 }
 
 function Login({ onLogin }: { onLogin: (session: Session) => void }) {
