@@ -1,4 +1,4 @@
-const CACHE = 'dukan-pos-v2';
+const CACHE = 'dukan-pos-v3';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
