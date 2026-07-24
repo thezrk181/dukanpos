@@ -352,18 +352,23 @@ function App() {
       const [{ data: p }, { data: c }, { data: s }] = await Promise.all([ supabase.from('products').select('*'), supabase.from('customers').select('*'), supabase.from('sales').select('*') ]);
       if (p || c || s) {
         setState((prev) => {
-          const mergedProducts = p?.length ? (p as Product[]) : prev.products;
+          // Always ensure the user has the latest default seed items
+          const mappedProducts = p?.length ? p.map((x: any) => ({ ...x, sellBy: x.sell_by })) as Product[] : prev.products;
+          const existingIds = new Set(mappedProducts.map(x => x.id));
+          const missingSeeds = seed.products.filter(x => !existingIds.has(x.id));
+          mappedProducts.push(...missingSeeds);
+          
           const mergedCustomers = c?.length ? (c as Customer[]) : prev.customers;
-          const mergedSales = s?.length ? (s as Sale[]) : prev.sales;
-          return { products: mergedProducts, customers: mergedCustomers, sales: mergedSales };
+          const mappedSales = s?.length ? s.map((x: any) => ({ ...x, customerId: x.customer_id, createdAt: x.created_at })) as Sale[] : prev.sales;
+          return { products: mappedProducts, customers: mergedCustomers, sales: mappedSales };
         });
       }
       
       // PUSH (Upsert everything local to cloud to ensure seed data or offline data is safe)
       const u = session.user.id;
-      if (state.products.length) supabase.from('products').upsert(state.products.map(x => ({ ...x, user_id: u }))).then();
+      if (state.products.length) supabase.from('products').upsert(state.products.map(({ sellBy, ...x }) => ({ ...x, sell_by: sellBy, user_id: u }))).then();
       if (state.customers.length) supabase.from('customers').upsert(state.customers.map(x => ({ ...x, user_id: u }))).then();
-      if (state.sales.length) supabase.from('sales').upsert(state.sales.map(x => ({ ...x, user_id: u }))).then();
+      if (state.sales.length) supabase.from('sales').upsert(state.sales.map(({ customerId, createdAt, ...x }) => ({ ...x, customer_id: customerId, created_at: createdAt, user_id: u }))).then();
     };
     sync();
   }, [session?.user]); // Run full sync on login
@@ -373,9 +378,9 @@ function App() {
     if (!session?.user) return;
     const u = session.user.id;
     localStorage.setItem('dukan-pos-state', JSON.stringify(state));
-    if (state.products.length) supabase.from('products').upsert(state.products.map(x => ({ ...x, user_id: u }))).then();
+    if (state.products.length) supabase.from('products').upsert(state.products.map(({ sellBy, ...x }) => ({ ...x, sell_by: sellBy, user_id: u }))).then();
     if (state.customers.length) supabase.from('customers').upsert(state.customers.map(x => ({ ...x, user_id: u }))).then();
-    if (state.sales.length) supabase.from('sales').upsert(state.sales.map(x => ({ ...x, user_id: u }))).then();
+    if (state.sales.length) supabase.from('sales').upsert(state.sales.map(({ customerId, createdAt, ...x }) => ({ ...x, customer_id: customerId, created_at: createdAt, user_id: u }))).then();
   }, [state, session?.user]);
 
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2600); };
