@@ -23,7 +23,7 @@ const seed: State = {
     { id: 'biscuit', name: 'Sooper Biscuit', category: 'Snacks', price: 35, cost: 29, stock: 46, unit: 'pack', accent: 'bg-[#e1ded3]', barcode: '8964002758999' },
     { id: 'surf', name: 'Surf Excel 500g', category: 'Household', price: 345, cost: 316, stock: 4, unit: 'pack', accent: 'bg-[#e2d9eb]', barcode: '8901030961443' },
     { id: 'water', name: 'Nestlé Pure Life 1.5L', category: 'Drinks', price: 110, cost: 92, stock: 3, unit: 'bottle', accent: 'bg-[#d9e3f0]', barcode: '7613035281783' },
-    { id: 'pantene-milky', name: 'Pantene Milky Extra Treatment 360ml', category: 'Household', price: 650, cost: 580, stock: 8, unit: 'bottle', accent: 'bg-[#f4e2d8]', barcode: '4084500795464' },
+    { id: 'pantene-milky', name: 'Pantene Milky Extra Treatment 360ml', category: 'Household', price: 650, cost: 580, stock: 8, unit: 'bottle', accent: 'bg-[#f4e2d8]', barcode: '8001841494272' },
     { id: 'rooh-afza', name: 'Rooh Afza 800ml', category: 'Drinks', price: 420, cost: 380, stock: 15, unit: 'bottle', accent: 'bg-[#f8d0d6]', barcode: '8964000122075' },
     { id: 'shan-biryani', name: 'Shan Bombay Biryani 60g', category: 'Kiryana', price: 110, cost: 95, stock: 20, unit: 'box', accent: 'bg-[#fcebb6]', barcode: '0788821001146' },
     { id: 'dettol-90g', name: 'Dettol Soap Original 90g', category: 'Household', price: 105, cost: 92, stock: 30, unit: 'bar', accent: 'bg-[#d8ebd8]', barcode: '6161100952591' },
