@@ -392,15 +392,19 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Sync Engine (Pull & Push)
+  const isSyncing = useRef(false);
+
+  // Sync Engine (Pull & Realtime Subscribe)
   useEffect(() => {
     if (!session?.user) return;
+    const u = session.user.id;
+    
     const sync = async () => {
-      // PULL
+      // PULL initial data
       const [{ data: p }, { data: c }, { data: s }] = await Promise.all([ supabase.from('products').select('*'), supabase.from('customers').select('*'), supabase.from('sales').select('*') ]);
       if (p || c || s) {
+        isSyncing.current = true; // prevent live push from bouncing this back
         setState((prev) => {
-          // Always ensure the user has the latest default seed items
           const mappedProducts = p?.length ? p.map((x: any) => ({ ...x, sellBy: x.sell_by })) as Product[] : prev.products;
           const existingIds = new Set(mappedProducts.map(x => x.id));
           const missingSeeds = seed.products.filter(x => !existingIds.has(x.id));
@@ -411,21 +415,61 @@ function App() {
           return { products: mappedProducts, customers: mergedCustomers, sales: mappedSales };
         });
       }
-      
-      // PUSH (Upsert everything local to cloud to ensure seed data or offline data is safe)
-      const u = session.user.id;
-      if (state.products.length) supabase.from('products').upsert(state.products.map(({ sellBy, ...x }) => ({ ...x, sell_by: sellBy, user_id: u }))).then();
-      if (state.customers.length) supabase.from('customers').upsert(state.customers.map(x => ({ ...x, user_id: u }))).then();
-      if (state.sales.length) supabase.from('sales').upsert(state.sales.map(({ customerId, createdAt, ...x }) => ({ ...x, customer_id: customerId, created_at: createdAt, user_id: u }))).then();
     };
     sync();
-  }, [session?.user]); // Run full sync on login
 
-  // Live Push on local state changes (debounce for safety in real app, immediate for MVP)
+    // REALTIME SUBSCRIPTIONS
+    const channel = supabase.channel('schema-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `user_id=eq.${u}` }, (payload) => {
+        isSyncing.current = true;
+        setState(prev => {
+          const row = payload.new as any;
+          if (!row || !row.id) return prev;
+          const mapped = { ...row, sellBy: row.sell_by } as Product;
+          const exists = prev.products.some(p => p.id === mapped.id);
+          if (exists && JSON.stringify(prev.products.find(p => p.id === mapped.id)) === JSON.stringify(mapped)) return prev;
+          return { ...prev, products: exists ? prev.products.map(p => p.id === mapped.id ? mapped : p) : [mapped, ...prev.products] };
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales', filter: `user_id=eq.${u}` }, (payload) => {
+        isSyncing.current = true;
+        setState(prev => {
+          const row = payload.new as any;
+          if (!row || !row.id) return prev;
+          const mapped = { ...row, customerId: row.customer_id, createdAt: row.created_at } as Sale;
+          const exists = prev.sales.some(s => s.id === mapped.id);
+          if (exists && JSON.stringify(prev.sales.find(s => s.id === mapped.id)) === JSON.stringify(mapped)) return prev;
+          return { ...prev, sales: exists ? prev.sales.map(s => s.id === mapped.id ? mapped : s) : [mapped, ...prev.sales] };
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: `user_id=eq.${u}` }, (payload) => {
+        isSyncing.current = true;
+        setState(prev => {
+          const row = payload.new as any;
+          if (!row || !row.id) return prev;
+          const mapped = row as Customer;
+          const exists = prev.customers.some(c => c.id === mapped.id);
+          if (exists && JSON.stringify(prev.customers.find(c => c.id === mapped.id)) === JSON.stringify(mapped)) return prev;
+          return { ...prev, customers: exists ? prev.customers.map(c => c.id === mapped.id ? mapped : c) : [mapped, ...prev.customers] };
+        });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [session?.user]); 
+
+  // Live Push on local state changes
   useEffect(() => {
-    if (!session?.user) return;
-    const u = session.user.id;
     localStorage.setItem('dukan-pos-state', JSON.stringify(state));
+    if (!session?.user) return;
+    
+    // Prevent bouncing the data back to Supabase if the state change came from a Sync or Realtime payload
+    if (isSyncing.current) {
+      isSyncing.current = false;
+      return;
+    }
+    
+    const u = session.user.id;
     if (state.products.length) supabase.from('products').upsert(state.products.map(({ sellBy, ...x }) => ({ ...x, sell_by: sellBy, user_id: u }))).then();
     if (state.customers.length) supabase.from('customers').upsert(state.customers.map(x => ({ ...x, user_id: u }))).then();
     if (state.sales.length) supabase.from('sales').upsert(state.sales.map(({ customerId, createdAt, ...x }) => ({ ...x, customer_id: customerId, created_at: createdAt, user_id: u }))).then();
