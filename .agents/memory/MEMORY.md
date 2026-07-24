@@ -1,0 +1,1 @@
+- [Offline POS interaction rule](offline-pos-interaction.md) — local-first POS actions must visibly persist and expose a manual fallback for device-dependent scanning.

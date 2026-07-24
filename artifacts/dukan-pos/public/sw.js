@@ -1,4 +1,4 @@
-const CACHE = 'dukan-pos-v1';
+const CACHE = 'dukan-pos-v2';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
@@ -8,9 +8,9 @@ self.addEventListener('activate', (event) => {
 });
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+  event.respondWith(fetch(event.request).then((response) => {
     const copy = response.clone();
     caches.open(CACHE).then((cache) => cache.put(event.request, copy));
     return response;
-  }).catch(() => caches.match('/'))));
+  }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/'))));
 });
