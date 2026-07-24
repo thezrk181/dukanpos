@@ -3,9 +3,11 @@ import { Link, Route, Router as WouterRouter, Switch, useLocation } from 'wouter
 import {
   ArrowDownLeft, ArrowUpRight, Banknote, BarChart3, Boxes, Check, ChevronDown,
   CircleDollarSign, CreditCard, FileText, LayoutGrid, Menu, Minus, Package, Plus, Printer,
-  Receipt, ScanBarcode, Search, Settings2, ShoppingBasket, Trash2, UserRound, Users, Wallet, X, Zap,
+  Receipt, ScanBarcode, Search, Settings2, ShoppingBasket, Trash2, UserRound, Users, Wallet, X, Zap, Loader2
 } from 'lucide-react';
 import NotFound from '@/pages/not-found';
+import { supabase } from '@/lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 
 type Product = { id: string; name: string; category: string; price: number; cost: number; stock: number; unit: string; accent: string; barcode?: string; sellBy?: 'unit' | 'weight' };
 type Customer = { id: string; name: string; phone: string; balance: number; initials: string };
@@ -15,21 +17,46 @@ type State = { products: Product[]; customers: Customer[]; sales: Sale[] };
 
 const seed: State = {
   products: [
-    { id: 'atta-10', name: 'Ashrafi Atta 10kg', category: 'Kiryana', price: 1380, cost: 1210, stock: 12, unit: 'bag', accent: 'bg-[#e9d8b8]', barcode: '850714001646' },
-    { id: 'milk-1', name: 'Olper’s Milk 1L', category: 'Dairy', price: 285, cost: 266, stock: 24, unit: 'pack', accent: 'bg-[#d8e8e6]', barcode: '8964000919002' },
-    { id: 'tea-95', name: 'Tapal Danedar 95g', category: 'Kiryana', price: 270, cost: 236, stock: 18, unit: 'box', accent: 'bg-[#f5c977]', barcode: '815096000939' },
-    { id: 'oil-1', name: 'Dalda Cooking Oil 1L', category: 'Kiryana', price: 585, cost: 548, stock: 9, unit: 'bottle', accent: 'bg-[#f4ddd4]', barcode: '8961100502813' },
-    { id: 'sugar-1', name: 'Fine Sugar 1kg', category: 'Kiryana', price: 172, cost: 153, stock: 31, unit: 'bag', accent: 'bg-[#eeeee3]', barcode: '8888167023016' },
-    { id: 'biscuit', name: 'Sooper Biscuit', category: 'Snacks', price: 35, cost: 29, stock: 46, unit: 'pack', accent: 'bg-[#e1ded3]', barcode: '8964002758999' },
-    { id: 'surf', name: 'Surf Excel 500g', category: 'Household', price: 345, cost: 316, stock: 4, unit: 'pack', accent: 'bg-[#e2d9eb]', barcode: '8901030961443' },
-    { id: 'water', name: 'Nestlé Pure Life 1.5L', category: 'Drinks', price: 110, cost: 92, stock: 3, unit: 'bottle', accent: 'bg-[#d9e3f0]', barcode: '7613035281783' },
-    { id: 'rooh-afza', name: 'Rooh Afza 800ml', category: 'Drinks', price: 420, cost: 380, stock: 15, unit: 'bottle', accent: 'bg-[#f8d0d6]', barcode: '8964000122075' },
-    { id: 'shan-biryani', name: 'Shan Bombay Biryani 60g', category: 'Kiryana', price: 110, cost: 95, stock: 20, unit: 'box', accent: 'bg-[#fcebb6]', barcode: '0788821001146' },
-    { id: 'dettol-90g', name: 'Dettol Soap Original 90g', category: 'Household', price: 105, cost: 92, stock: 30, unit: 'bar', accent: 'bg-[#d8ebd8]', barcode: '6161100952591' },
-    { id: 'sprite-15', name: 'Sprite 1.5L', category: 'Drinks', price: 150, cost: 130, stock: 25, unit: 'bottle', accent: 'bg-[#d1e8da]', barcode: '5449000012203' },
-    { id: 'lays-fc', name: 'Lays French Cheese 40g', category: 'Snacks', price: 50, cost: 42, stock: 40, unit: 'pack', accent: 'bg-[#f7ebd4]', barcode: '8964001358046' },
-    { id: 'lipton-190', name: 'Lipton Yellow Label 190g', category: 'Kiryana', price: 480, cost: 440, stock: 15, unit: 'box', accent: 'bg-[#faebb9]', barcode: '8710522883446' },
-    { id: 'national-ketchup', name: 'National Tomato Ketchup 800g', category: 'Kiryana', price: 350, cost: 310, stock: 12, unit: 'pouch', accent: 'bg-[#f9d7d9]', barcode: '8964000112345' },
+    { id: 'p1', name: 'Ashrafi Atta 10kg', category: 'Kiryana', price: 1380, cost: 1210, stock: 12, unit: 'bag', accent: 'bg-[#e9d8b8]', barcode: '850714001646' },
+    { id: 'p2', name: 'Olper’s Milk 1L', category: 'Dairy', price: 285, cost: 266, stock: 24, unit: 'pack', accent: 'bg-[#d8e8e6]', barcode: '8964000919002' },
+    { id: 'p3', name: 'Tapal Danedar 95g', category: 'Kiryana', price: 270, cost: 236, stock: 18, unit: 'box', accent: 'bg-[#f5c977]', barcode: '815096000939' },
+    { id: 'p4', name: 'Dalda Cooking Oil 1L', category: 'Kiryana', price: 585, cost: 548, stock: 9, unit: 'bottle', accent: 'bg-[#f4ddd4]', barcode: '8961100502813' },
+    { id: 'p5', name: 'Fine Sugar 1kg', category: 'Kiryana', price: 172, cost: 153, stock: 31, unit: 'bag', accent: 'bg-[#eeeee3]', barcode: '8888167023016' },
+    { id: 'p6', name: 'Sooper Biscuit 1/2 Roll', category: 'Snacks', price: 35, cost: 29, stock: 46, unit: 'pack', accent: 'bg-[#e1ded3]', barcode: '8964002758999' },
+    { id: 'p7', name: 'Surf Excel 500g', category: 'Household', price: 345, cost: 316, stock: 4, unit: 'pack', accent: 'bg-[#e2d9eb]', barcode: '8901030961443' },
+    { id: 'p8', name: 'Nestlé Pure Life 1.5L', category: 'Drinks', price: 110, cost: 92, stock: 3, unit: 'bottle', accent: 'bg-[#d9e3f0]', barcode: '7613035281783' },
+    { id: 'p9', name: 'Rooh Afza 800ml', category: 'Drinks', price: 420, cost: 380, stock: 15, unit: 'bottle', accent: 'bg-[#f8d0d6]', barcode: '8964000122075' },
+    { id: 'p10', name: 'Shan Bombay Biryani 60g', category: 'Kiryana', price: 110, cost: 95, stock: 20, unit: 'box', accent: 'bg-[#fcebb6]', barcode: '0788821001146' },
+    { id: 'p11', name: 'Dettol Soap Original 90g', category: 'Household', price: 105, cost: 92, stock: 30, unit: 'bar', accent: 'bg-[#d8ebd8]', barcode: '6161100952591' },
+    { id: 'p12', name: 'Sprite 1.5L', category: 'Drinks', price: 150, cost: 130, stock: 25, unit: 'bottle', accent: 'bg-[#d1e8da]', barcode: '5449000012203' },
+    { id: 'p13', name: 'Lays French Cheese 40g', category: 'Snacks', price: 50, cost: 42, stock: 40, unit: 'pack', accent: 'bg-[#f7ebd4]', barcode: '8964001358046' },
+    { id: 'p14', name: 'Lipton Yellow Label 190g', category: 'Kiryana', price: 480, cost: 440, stock: 15, unit: 'box', accent: 'bg-[#faebb9]', barcode: '8710522883446' },
+    { id: 'p15', name: 'National Tomato Ketchup 800g', category: 'Kiryana', price: 350, cost: 310, stock: 12, unit: 'pouch', accent: 'bg-[#f9d7d9]', barcode: '8964000112345' },
+    { id: 'p16', name: 'Coca-Cola 1.5L', category: 'Drinks', price: 150, cost: 130, stock: 40, unit: 'bottle', accent: 'bg-[#fad6d6]', barcode: '5449000000996' },
+    { id: 'p17', name: 'Pepsi 1.5L', category: 'Drinks', price: 150, cost: 130, stock: 35, unit: 'bottle', accent: 'bg-[#d6e4fa]', barcode: '012000001306' },
+    { id: 'p18', name: 'Ariel Washing Powder 1kg', category: 'Household', price: 680, cost: 620, stock: 10, unit: 'pack', accent: 'bg-[#d6fae4]', barcode: '8001090123456' },
+    { id: 'p19', name: 'Colgate Maximum Cavity Protection 120g', category: 'Household', price: 180, cost: 150, stock: 20, unit: 'tube', accent: 'bg-[#fad6d6]', barcode: '8850006900123' },
+    { id: 'p20', name: 'Lifebuoy Soap Total 10 90g', category: 'Household', price: 90, cost: 75, stock: 50, unit: 'bar', accent: 'bg-[#fae4d6]', barcode: '8901030001234' },
+    { id: 'p21', name: 'Sunsilk Black Shine Shampoo 160ml', category: 'Household', price: 250, cost: 210, stock: 15, unit: 'bottle', accent: 'bg-[#e4d6fa]', barcode: '8901030005678' },
+    { id: 'p22', name: 'Head & Shoulders Smooth & Silky 185ml', category: 'Household', price: 420, cost: 370, stock: 12, unit: 'bottle', accent: 'bg-[#d6e4fa]', barcode: '8001841000123' },
+    { id: 'p23', name: 'National Iodine Salt 800g', category: 'Kiryana', price: 50, cost: 40, stock: 40, unit: 'pack', accent: 'bg-[#e4fae4]', barcode: '8964000112444' },
+    { id: 'p24', name: 'Mezan Canola Oil 1L', category: 'Kiryana', price: 560, cost: 520, stock: 14, unit: 'pouch', accent: 'bg-[#fae4d6]', barcode: '8961100502855' },
+    { id: 'p25', name: 'Habib Cooking Oil 1L', category: 'Kiryana', price: 575, cost: 530, stock: 18, unit: 'pouch', accent: 'bg-[#fae4d6]', barcode: '8961100502900' },
+    { id: 'p26', name: 'Tuc Biscuit Half Roll', category: 'Snacks', price: 30, cost: 25, stock: 60, unit: 'pack', accent: 'bg-[#fcfcd6]', barcode: '8964002759002' },
+    { id: 'p27', name: 'Prince Biscuit', category: 'Snacks', price: 20, cost: 16, stock: 100, unit: 'pack', accent: 'bg-[#e4d6fc]', barcode: '8964002759111' },
+    { id: 'p28', name: 'Gala Biscuit Half Roll', category: 'Snacks', price: 35, cost: 29, stock: 45, unit: 'pack', accent: 'bg-[#fcd6e4]', barcode: '8964002759222' },
+    { id: 'p29', name: 'Dairy Milk Chocolate 10g', category: 'Snacks', price: 20, cost: 16, stock: 80, unit: 'pack', accent: 'bg-[#e4d6fc]', barcode: '7622210001234' },
+    { id: 'p30', name: 'KitKat 2 Finger', category: 'Snacks', price: 40, cost: 34, stock: 50, unit: 'pack', accent: 'bg-[#fcd6d6]', barcode: '7613035000123' },
+    { id: 'p31', name: 'Mitchells Lemon Squash 800ml', category: 'Drinks', price: 450, cost: 390, stock: 8, unit: 'bottle', accent: 'bg-[#fcfcd6]', barcode: '8964000123000' },
+    { id: 'p32', name: 'Shezan Mango Juice 250ml', category: 'Drinks', price: 50, cost: 42, stock: 30, unit: 'box', accent: 'bg-[#fae4d6]', barcode: '8964000124000' },
+    { id: 'p33', name: 'Nestle Fruita Vitals Apple 1L', category: 'Drinks', price: 250, cost: 210, stock: 12, unit: 'box', accent: 'bg-[#e4fce4]', barcode: '7613035281800' },
+    { id: 'p34', name: 'Nurpur Milk 1L', category: 'Dairy', price: 280, cost: 260, stock: 20, unit: 'pack', accent: 'bg-[#d6e4fc]', barcode: '8964000919111' },
+    { id: 'p35', name: 'Milk Pak 1L', category: 'Dairy', price: 290, cost: 270, stock: 25, unit: 'pack', accent: 'bg-[#e4fce4]', barcode: '8964000919222' },
+    { id: 'p36', name: 'Blue Band Margarine 250g', category: 'Dairy', price: 240, cost: 210, stock: 10, unit: 'box', accent: 'bg-[#fcfcd6]', barcode: '8901030009999' },
+    { id: 'p37', name: 'K&Ns Safe & Healthy Chicken 1kg', category: 'Kiryana', price: 850, cost: 780, stock: 10, unit: 'pack', accent: 'bg-[#fcd6d6]', barcode: '8964000125000' },
+    { id: 'p38', name: 'Lux Soap Pink 90g', category: 'Household', price: 95, cost: 80, stock: 40, unit: 'bar', accent: 'bg-[#fce4fc]', barcode: '8901030008888' },
+    { id: 'p39', name: 'Vim Dishwash Bar 250g', category: 'Household', price: 80, cost: 65, stock: 35, unit: 'bar', accent: 'bg-[#e4fce4]', barcode: '8901030007777' },
+    { id: 'p40', name: 'Harpic Power Plus 500ml', category: 'Household', price: 220, cost: 190, stock: 15, unit: 'bottle', accent: 'bg-[#d6d6fc]', barcode: '6161100952666' },
   ],
   customers: [
     { id: 'c-1', name: 'Haji Imran', phone: '0300 814 2290', balance: 2150, initials: 'HI' },
@@ -290,10 +317,72 @@ function Summary({ state }: { state: State }) {
   {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} />}</>;
 }
 
+function Login({ onLogin }: { onLogin: (session: Session) => void }) {
+  const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false); const [error, setError] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const auth = async (e: FormEvent) => {
+    e.preventDefault(); setLoading(true); setError('');
+    const { data, error: err } = isSignUp ? await supabase.auth.signUp({ email, password }) : await supabase.auth.signInWithPassword({ email, password });
+    if (err) setError(err.message);
+    else if (data.session) onLogin(data.session);
+    else if (isSignUp) setError('Check your email to verify your account. If auto-confirm is enabled, you can sign in directly.');
+    setLoading(false);
+  };
+  return <div className="grid min-h-[100dvh] place-items-center bg-background p-5"><div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl"><div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm"><ShoppingBasket size={28} /></div><h1 className="text-center font-display text-2xl text-foreground">{isSignUp ? 'Create shop account' : 'Welcome to dukan'}</h1><p className="mt-2 text-center text-xs text-muted-foreground">Keep your shop data synced and safe in the cloud.</p><form onSubmit={auth} className="mt-8 space-y-4"><label className="block text-xs font-bold">Email address<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm" placeholder="shop@example.com" /></label><label className="block text-xs font-bold">Password<input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm" placeholder="••••••••" /></label>{error && <p className="text-center text-xs font-bold text-destructive">{error}</p>}<button disabled={loading} type="submit" className="flex h-11 w-full items-center justify-center rounded-xl bg-primary font-bold text-primary-foreground disabled:opacity-50">{loading ? <Loader2 size={18} className="animate-spin" /> : (isSignUp ? 'Create account' : 'Sign in')}</button></form><button onClick={() => setIsSignUp(!isSignUp)} className="mt-6 w-full text-center text-xs font-bold text-muted-foreground hover:text-primary">{isSignUp ? 'Already have an account? Sign in' : 'New here? Create an account'}</button></div></div>;
+}
+
 function App() {
+  const [session, setSession] = useState<Session | null>(null);
   const [state, setState] = useState<State>(loadState); const [toast, setToast] = useState('');
-  useEffect(() => { localStorage.setItem('dukan-pos-state', JSON.stringify(state)); }, [state]);
+  const [loading, setLoading] = useState(true);
+
+  // Auth init
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); setLoading(false); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Sync Engine (Pull & Push)
+  useEffect(() => {
+    if (!session?.user) return;
+    const sync = async () => {
+      // PULL
+      const [{ data: p }, { data: c }, { data: s }] = await Promise.all([ supabase.from('products').select('*'), supabase.from('customers').select('*'), supabase.from('sales').select('*') ]);
+      if (p || c || s) {
+        setState((prev) => {
+          const mergedProducts = p?.length ? (p as Product[]) : prev.products;
+          const mergedCustomers = c?.length ? (c as Customer[]) : prev.customers;
+          const mergedSales = s?.length ? (s as Sale[]) : prev.sales;
+          return { products: mergedProducts, customers: mergedCustomers, sales: mergedSales };
+        });
+      }
+      
+      // PUSH (Upsert everything local to cloud to ensure seed data or offline data is safe)
+      const u = session.user.id;
+      if (state.products.length) supabase.from('products').upsert(state.products.map(x => ({ ...x, user_id: u }))).then();
+      if (state.customers.length) supabase.from('customers').upsert(state.customers.map(x => ({ ...x, user_id: u }))).then();
+      if (state.sales.length) supabase.from('sales').upsert(state.sales.map(x => ({ ...x, user_id: u }))).then();
+    };
+    sync();
+  }, [session?.user]); // Run full sync on login
+
+  // Live Push on local state changes (debounce for safety in real app, immediate for MVP)
+  useEffect(() => {
+    if (!session?.user) return;
+    const u = session.user.id;
+    localStorage.setItem('dukan-pos-state', JSON.stringify(state));
+    if (state.products.length) supabase.from('products').upsert(state.products.map(x => ({ ...x, user_id: u }))).then();
+    if (state.customers.length) supabase.from('customers').upsert(state.customers.map(x => ({ ...x, user_id: u }))).then();
+    if (state.sales.length) supabase.from('sales').upsert(state.sales.map(x => ({ ...x, user_id: u }))).then();
+  }, [state, session?.user]);
+
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2600); };
+  
+  if (loading) return <div className="grid h-[100dvh] place-items-center bg-background"><Loader2 className="animate-spin text-primary" size={30} /></div>;
+  if (!session) return <Login onLogin={setSession} />;
+
   return <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Shell><Switch><Route path="/"><Counter state={state} setState={setState} notify={notify} /></Route><Route path="/inventory"><Inventory state={state} setState={setState} notify={notify} /></Route><Route path="/udhaar"><Udhaar state={state} setState={setState} notify={notify} /></Route><Route path="/summary"><Summary state={state} /></Route><Route><NotFound /></Route></Switch></Shell>{toast && <div data-testid="status-toast" className="no-print fixed bottom-20 left-1/2 z-[60] -translate-x-1/2 rounded-xl bg-primary px-4 py-3 text-xs font-bold text-primary-foreground shadow-xl md:bottom-6">{toast}</div>}</WouterRouter>;
 }
 export default App;
