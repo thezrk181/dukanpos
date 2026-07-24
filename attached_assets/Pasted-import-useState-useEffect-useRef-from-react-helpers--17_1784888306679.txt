@@ -1,0 +1,919 @@
+import { useState, useEffect, useRef } from "react";
+
+// ── helpers ───────────────────────────────────────────────────────────────
+const uid    = () => Math.random().toString(36).slice(2, 9);
+const ts     = () => new Date().toISOString();
+const fmtPKR = (n) => "Rs " + Number(n || 0).toLocaleString("en-PK", { minimumFractionDigits: 0 });
+const todayStr = () => new Date().toLocaleDateString("en-PK", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
+// ── localStorage ──────────────────────────────────────────────────────────
+function useLS(key, init) {
+  const [val, setVal] = useState(() => {
+    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : init; }
+    catch { return init; }
+  });
+  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }, [key, val]);
+  return [val, setVal];
+}
+
+// ── seed data ─────────────────────────────────────────────────────────────
+const SEED_PRODUCTS = [
+  { id: uid(), name: "Nestlé Milk Pack 1L",   barcode: "6294003550018", price: 290,  stock: 40,  lowAt: 5,  unit: "pcs" },
+  { id: uid(), name: "Tapal Danedar 190g",     barcode: "6941234560012", price: 185,  stock: 25,  lowAt: 5,  unit: "pcs" },
+  { id: uid(), name: "Sunsilk Shampoo 180ml",  barcode: "8901030987654", price: 320,  stock: 18,  lowAt: 3,  unit: "pcs" },
+  { id: uid(), name: "Shan Biryani Masala",    barcode: "6921734951104", price: 95,   stock: 30,  lowAt: 5,  unit: "pcs" },
+  { id: uid(), name: "Aata (loose)",           barcode: "",              price: 145,  stock: 200, lowAt: 20, unit: "kg"  },
+  { id: uid(), name: "Chawal Basmati (loose)", barcode: "",              price: 320,  stock: 150, lowAt: 20, unit: "kg"  },
+  { id: uid(), name: "Daal Mash (loose)",      barcode: "",              price: 260,  stock: 80,  lowAt: 10, unit: "kg"  },
+  { id: uid(), name: "Coca-Cola 1.5L",         barcode: "5449000000996", price: 130,  stock: 50,  lowAt: 6,  unit: "pcs" },
+];
+const SEED_CUSTOMERS = [
+  { id: uid(), name: "Ahmed Bhai",  phone: "0300-1234567", balance: 450  },
+  { id: uid(), name: "Raza Sahab",  phone: "0321-9876543", balance: 0    },
+  { id: uid(), name: "Nasreen Apa", phone: "",             balance: 1200 },
+];
+
+// ── palette ───────────────────────────────────────────────────────────────
+const C = {
+  bg: "#111318", panel: "#181b23", card: "#1e2130", border: "#2c2f3f",
+  accent: "#00c896", warn: "#f59e0b", danger: "#ef4444",
+  muted: "#6b7280", text: "#e2e8f0", textSub: "#94a3b8",
+};
+
+const STYLE = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body,#root{height:100%}
+  body{background:${C.bg};color:${C.text};font-family:'Inter',system-ui,sans-serif;overflow:hidden}
+  input,select,textarea{background:${C.card};color:${C.text};border:1px solid ${C.border};
+    border-radius:8px;padding:.5rem .75rem;font-size:.875rem;outline:none;width:100%;transition:border-color .15s}
+  input:focus,select:focus,textarea:focus{border-color:${C.accent}}
+  button{cursor:pointer;border:none;border-radius:8px;font-family:inherit;transition:all .15s}
+  select option{background:${C.card}}
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-thumb{background:${C.border};border-radius:4px}
+  @keyframes pop{0%{transform:scale(.94);opacity:0}100%{transform:scale(1);opacity:1}}
+  @keyframes slideUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+  @keyframes flash{0%,100%{opacity:1}50%{opacity:.4}}
+  .pop{animation:pop .18s ease}
+  .slide{animation:slideUp .2s ease}
+  .flash{animation:flash .3s ease}
+  @media print{
+    body *{visibility:hidden}
+    #bill-print,#bill-print *{visibility:visible}
+    #bill-print{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;padding:20px}
+  }
+`;
+
+// ── primitives ────────────────────────────────────────────────────────────
+const Lbl = ({ c }) => (
+  <span style={{ fontSize: ".7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: C.muted }}>{c}</span>
+);
+
+const Btn = ({ children, onClick, variant = "primary", style, disabled, small }) => {
+  const base = {
+    fontWeight: 600, fontSize: small ? ".78rem" : ".875rem",
+    padding: small ? "4px 10px" : ".55rem 1.1rem",
+    color: C.text, opacity: disabled ? .5 : 1, cursor: disabled ? "not-allowed" : "pointer",
+  };
+  const v = {
+    primary: { background: C.accent, color: "#0a1a14" },
+    ghost:   { background: "transparent", border: `1px solid ${C.border}` },
+    danger:  { background: C.danger + "22", border: `1px solid ${C.danger}44`, color: C.danger },
+    warn:    { background: C.warn + "22", border: `1px solid ${C.warn}44`, color: C.warn },
+  };
+  return <button onClick={disabled ? undefined : onClick} style={{ ...base, ...v[variant], ...style }}>{children}</button>;
+};
+
+const Card = ({ children, style }) => (
+  <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "1rem", ...style }}>
+    {children}
+  </div>
+);
+
+const Toast = ({ msg, onDone }) => {
+  useEffect(() => { const t = setTimeout(onDone, 2200); return () => clearTimeout(t); }, []);
+  return (
+    <div style={{
+      position: "fixed", bottom: 24, right: 24, background: C.accent, color: "#0a1a14",
+      padding: ".65rem 1.2rem", borderRadius: 10, fontWeight: 700, fontSize: ".875rem",
+      zIndex: 9999, animation: "pop .2s ease", boxShadow: "0 4px 24px #00c89640",
+    }}>{msg}</div>
+  );
+};
+
+// ── mobile hook ───────────────────────────────────────────────────────────
+function useIsMobile() {
+  const [mob, setMob] = useState(window.innerWidth < 640);
+  useEffect(() => {
+    const fn = () => setMob(window.innerWidth < 640);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return mob;
+}
+
+// ── camera scanner ────────────────────────────────────────────────────────
+function CameraScanner({ onResult, onClose }) {
+  const videoRef = useRef(null);
+  const readerRef = useRef(null);
+  useEffect(() => {
+    let stopped = false;
+    async function start() {
+      try {
+        const { BrowserMultiFormatReader } = await import("https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/esm/index.js");
+        const reader = new BrowserMultiFormatReader();
+        readerRef.current = reader;
+        await reader.decodeFromVideoDevice(undefined, videoRef.current, (result) => {
+          if (stopped || !result) return;
+          stopped = true; reader.reset(); onResult(result.getText());
+        });
+      } catch (e) { alert("Camera error: " + e.message); onClose(); }
+    }
+    start();
+    return () => { stopped = true; readerRef.current?.reset(); };
+  }, []);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000d", zIndex: 900,
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+      <div style={{ position: "relative", width: 320, height: 240, borderRadius: 12, overflow: "hidden", border: `3px solid ${C.accent}` }}>
+        <video ref={videoRef} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <div style={{ position: "absolute", inset: 0, background: `linear-gradient(transparent 48%,${C.accent}22 50%,transparent 52%)` }} />
+      </div>
+      <p style={{ color: C.textSub, fontSize: ".85rem" }}>Point camera at barcode</p>
+      <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+    </div>
+  );
+}
+
+// ── BILL MODAL ────────────────────────────────────────────────────────────
+// Defined OUTSIDE POS so it never gets recreated on every render
+function BillModal({ sale, onPrint, onClose }) {
+  if (!sale) return null;
+  const billDate = new Date(sale.ts).toLocaleString("en-PK");
+  const subtotal = sale.items.reduce((s, i) => s + i.price * i.qty, 0);
+
+  const billContent = (
+    <div style={{ background: "#fff", color: "#111", padding: "24px 28px", borderRadius: 12,
+      width: 340, fontFamily: "monospace", fontSize: ".85rem", lineHeight: 1.6 }}>
+      <div style={{ textAlign: "center", marginBottom: 12 }}>
+        <div style={{ fontWeight: 800, fontSize: "1.2rem" }}>دکان POS</div>
+        <div style={{ fontSize: ".75rem", color: "#555" }}>{billDate}</div>
+        <div style={{ fontSize: ".75rem", color: "#555" }}>Receipt #{sale.id.toUpperCase()}</div>
+      </div>
+      <div style={{ borderTop: "1px dashed #ccc", borderBottom: "1px dashed #ccc", padding: "8px 0", margin: "8px 0" }}>
+        {sale.items.map((it, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
+            <span>{it.name} x{it.qty}</span>
+            <span>{fmtPKR(it.price * it.qty)}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: "1rem", margin: "6px 0" }}>
+        <span>TOTAL</span><span>{fmtPKR(subtotal)}</span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".8rem", color: "#555" }}>
+        <span>Payment</span>
+        <span style={{ textTransform: "capitalize" }}>{sale.payMode === "udhaar" ? "Udhaar (Credit)" : "Cash"}</span>
+      </div>
+      {sale.cashGiven > 0 && (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".8rem", color: "#555" }}>
+            <span>Cash Given</span><span>{fmtPKR(sale.cashGiven)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".8rem", color: "#555" }}>
+            <span>Change</span><span>{fmtPKR(Math.max(0, sale.cashGiven - subtotal))}</span>
+          </div>
+        </>
+      )}
+      <div style={{ textAlign: "center", marginTop: 14, fontSize: ".75rem", color: "#888" }}>
+        — Shukriya! —
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000c", zIndex: 1000,
+      display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
+      {/* hidden printable version */}
+      <div id="bill-print" style={{ display: "none" }}>{billContent}</div>
+
+      {/* preview */}
+      <div className="pop">{billContent}</div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <Btn onClick={onPrint} style={{ gap: 6 }}>🖨 Print Bill</Btn>
+        <Btn variant="ghost" onClick={onClose}>Skip — Just Save</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── CART PANEL ────────────────────────────────────────────────────────────
+// Defined OUTSIDE POS — this is the key fix for the cash input bug.
+// When CartPanel was defined inside POS, every state change recreated it
+// as a brand new component, causing React to unmount/remount and lose focus.
+function CartPanel({
+  isMobile, cart, total, payMode, setPayMode,
+  cashGiven, setCashGiven, customers, selCust, setSelCust,
+  changeQty, removeItem, onClearCart, onCheckout, onClose,
+}) {
+  const change = Math.max(0, (parseFloat(cashGiven) || 0) - total);
+
+  return (
+    <Card style={{
+      display: "flex", flexDirection: "column", gap: 0, padding: 0, overflow: "hidden",
+      ...(isMobile
+        ? { position: "fixed", inset: 0, zIndex: 800, borderRadius: 0 }
+        : { flex: "none", width: 310, height: "100%" }),
+    }}>
+      {/* header */}
+      <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.border}`,
+        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontWeight: 700 }}>Cart {cart.length > 0 && `(${cart.length})`}</span>
+        <div style={{ display: "flex", gap: 6 }}>
+          {cart.length > 0 && <Btn small variant="ghost" onClick={onClearCart}>Clear</Btn>}
+          {isMobile && <Btn small variant="ghost" onClick={onClose}>✕</Btn>}
+        </div>
+      </div>
+
+      {/* items */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "8px 14px" }}>
+        {cart.length === 0 && (
+          <p style={{ color: C.muted, fontSize: ".85rem", textAlign: "center", marginTop: 32 }}>
+            Cart is empty.<br />Scan or search a product.
+          </p>
+        )}
+        {cart.map(it => (
+          <div key={it.id} className="slide" style={{ display: "flex", alignItems: "center", gap: 8,
+            padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: ".85rem", whiteSpace: "nowrap",
+                overflow: "hidden", textOverflow: "ellipsis" }}>{it.name}</div>
+              <div style={{ fontSize: ".75rem", color: C.muted }}>{fmtPKR(it.price)} each</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button onClick={() => changeQty(it.id, -1)} style={{ width: 26, height: 26, borderRadius: 6,
+                background: C.border, color: C.text, fontWeight: 700, border: "none", cursor: "pointer" }}>−</button>
+              <span style={{ width: 24, textAlign: "center", fontWeight: 700, fontSize: ".9rem" }}>{it.qty}</span>
+              <button onClick={() => changeQty(it.id, +1)} style={{ width: 26, height: 26, borderRadius: 6,
+                background: C.border, color: C.text, fontWeight: 700, border: "none", cursor: "pointer" }}>+</button>
+            </div>
+            <span style={{ fontWeight: 700, color: C.accent, width: 68, textAlign: "right", fontSize: ".85rem" }}>
+              {fmtPKR(it.price * it.qty)}
+            </span>
+            <button onClick={() => removeItem(it.id)} style={{ background: "none", border: "none",
+              color: C.muted, fontSize: "1rem", cursor: "pointer" }}>✕</button>
+          </div>
+        ))}
+      </div>
+
+      {/* footer — payment */}
+      <div style={{ padding: "12px 14px", borderTop: `1px solid ${C.border}`,
+        display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontWeight: 600, color: C.muted }}>Total</span>
+          <span style={{ fontWeight: 800, fontSize: "1.3rem", color: C.accent }}>{fmtPKR(total)}</span>
+        </div>
+
+        {/* pay mode toggle */}
+        <div style={{ display: "flex", gap: 6 }}>
+          {["cash", "udhaar"].map(m => (
+            <button key={m} onClick={() => setPayMode(m)} style={{
+              flex: 1, padding: "7px", borderRadius: 8, fontWeight: 600, fontSize: ".8rem", cursor: "pointer",
+              border: `1px solid ${payMode === m ? C.accent : C.border}`,
+              background: payMode === m ? C.accent + "22" : "transparent",
+              color: payMode === m ? C.accent : C.muted, textTransform: "capitalize",
+            }}>{m === "cash" ? "💵 Cash" : "📒 Udhaar"}</button>
+          ))}
+        </div>
+
+        {/* cash given — THE FIX: this input is now stable because CartPanel is a top-level component */}
+        {payMode === "cash" && (
+          <div>
+            <Lbl c="Cash given" />
+            <input
+              type="number"
+              value={cashGiven}
+              onChange={e => setCashGiven(e.target.value)}
+              placeholder="Enter amount"
+              style={{ marginTop: 4 }}
+            />
+            {cashGiven !== "" && (
+              <div style={{ marginTop: 6, fontSize: ".85rem", fontWeight: 600,
+                color: parseFloat(cashGiven) >= total ? C.accent : C.danger }}>
+                {parseFloat(cashGiven) >= total
+                  ? `Change: ${fmtPKR(change)}`
+                  : `Short by: ${fmtPKR(total - parseFloat(cashGiven))}`}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* udhaar customer picker */}
+        {payMode === "udhaar" && (
+          <div>
+            <Lbl c="Customer" />
+            <select value={selCust} onChange={e => setSelCust(e.target.value)} style={{ marginTop: 4 }}>
+              <option value="">— Select customer —</option>
+              {customers.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name}{c.balance > 0 ? ` (owes ${fmtPKR(c.balance)})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <Btn onClick={onCheckout} disabled={!cart.length}
+          style={{ width: "100%", padding: ".7rem", fontSize: "1rem", fontWeight: 800 }}>
+          ✓ Checkout
+        </Btn>
+      </div>
+    </Card>
+  );
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────
+const TABS = [
+  { id: "pos",       label: "POS",       icon: "🛒" },
+  { id: "inventory", label: "Inventory", icon: "📦" },
+  { id: "udhaar",    label: "Udhaar",    icon: "📒" },
+  { id: "summary",   label: "Today",     icon: "📊" },
+];
+
+// ════════════════════════════════════════════════════════════════════════════
+// POS
+// ════════════════════════════════════════════════════════════════════════════
+function POS({ products, setProducts, customers, sales, setSales, toast }) {
+  const [query,     setQuery]     = useState("");
+  const [cart,      setCart]      = useState([]);
+  const [payMode,   setPayMode]   = useState("cash");
+  const [selCust,   setSelCust]   = useState("");
+  const [showCam,   setShowCam]   = useState(false);
+  const [cashGiven, setCashGiven] = useState("");
+  const [flashId,   setFlashId]   = useState(null);
+  const [showCart,  setShowCart]  = useState(false);
+  const [billSale,  setBillSale]  = useState(null); // sale to show in bill modal
+  const inputRef = useRef(null);
+  const isMobile = useIsMobile();
+
+  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+
+  const q = query.trim().toLowerCase();
+  const results = q.length < 1 ? [] : products.filter(p => {
+    if (p.barcode && p.barcode === q)       return true;
+    if (p.barcode && p.barcode.includes(q)) return true;
+    return p.name.toLowerCase().includes(q);
+  }).slice(0, 8);
+
+  const addToCart = (p) => {
+    setCart(c => {
+      const ex = c.find(x => x.id === p.id);
+      return ex ? c.map(x => x.id === p.id ? { ...x, qty: x.qty + 1 } : x)
+                : [...c, { ...p, qty: 1 }];
+    });
+    setFlashId(p.id); setTimeout(() => setFlashId(null), 350);
+    setQuery(""); inputRef.current?.focus();
+  };
+
+  const onScan = (code) => {
+    setShowCam(false);
+    const p = products.find(x => x.barcode === code);
+    if (p) { addToCart(p); toast("✓ " + p.name); }
+    else   { setQuery(code); toast("Barcode not found — search or add it"); }
+    inputRef.current?.focus();
+  };
+
+  const handleKey = (e) => {
+    if (e.key === "Enter" && query.trim()) {
+      const p = products.find(x => x.barcode === query.trim());
+      if (p) { addToCart(p); toast("✓ " + p.name); }
+    }
+  };
+
+  const changeQty  = (id, d) => setCart(c => c.map(x => x.id === id ? { ...x, qty: Math.max(1, x.qty + d) } : x));
+  const removeItem = (id)    => setCart(c => c.filter(x => x.id !== id));
+
+  const checkout = () => {
+    if (!cart.length) return;
+    if (payMode === "udhaar" && !selCust) { toast("Select a customer for udhaar"); return; }
+
+    // deduct stock
+    setProducts(pp => pp.map(p => {
+      const ci = cart.find(x => x.id === p.id);
+      return ci ? { ...p, stock: Math.max(0, p.stock - ci.qty) } : p;
+    }));
+
+    const cash = parseFloat(cashGiven) || 0;
+    const sale = {
+      id: uid(), ts: ts(), items: [...cart], total, payMode,
+      customerId: payMode === "udhaar" ? selCust : null,
+      cashGiven: payMode === "cash" ? cash : 0,
+    };
+    setSales(s => [...s, sale]);
+
+    // show bill modal — user picks print or skip
+    setBillSale(sale);
+
+    // reset cart state
+    setCart([]); setQuery(""); setCashGiven(""); setSelCust(""); setShowCart(false);
+    toast("✓ Sale saved — " + fmtPKR(total));
+  };
+
+  const handlePrint = () => {
+    window.print();
+    // print() is blocking — after it returns the dialog is done
+    setBillSale(null);
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 12, height: "100%", position: "relative" }}>
+      {showCam && <CameraScanner onResult={onScan} onClose={() => setShowCam(false)} />}
+      {billSale && <BillModal sale={billSale} onPrint={handlePrint} onClose={() => setBillSale(null)} />}
+      {isMobile && showCart && (
+        <CartPanel
+          isMobile={isMobile} cart={cart} total={total}
+          payMode={payMode} setPayMode={setPayMode}
+          cashGiven={cashGiven} setCashGiven={setCashGiven}
+          customers={customers} selCust={selCust} setSelCust={setSelCust}
+          changeQty={changeQty} removeItem={removeItem}
+          onClearCart={() => setCart([])}
+          onCheckout={checkout}
+          onClose={() => setShowCart(false)}
+        />
+      )}
+
+      {/* left — products */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1, position: "relative" }}>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>🔍</span>
+            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
+              onKeyDown={handleKey} autoFocus
+              placeholder="Search name, scan or type barcode…"
+              style={{ paddingLeft: 34, fontSize: ".9rem" }} />
+          </div>
+          <Btn onClick={() => setShowCam(true)} variant="ghost"
+            style={{ padding: "0 14px", fontSize: "1.2rem", flexShrink: 0 }}>📷</Btn>
+          {isMobile && (
+            <button onClick={() => setShowCart(true)} style={{
+              background: cart.length ? C.accent : C.border,
+              color: cart.length ? "#0a1a14" : C.muted,
+              border: "none", borderRadius: 8, padding: "0 12px",
+              fontWeight: 700, fontSize: ".85rem", flexShrink: 0,
+            }}>🛒{cart.length > 0 ? ` (${cart.length})` : ""}</button>
+          )}
+        </div>
+
+        {/* search results */}
+        {results.length > 0 && (
+          <Card style={{ padding: 6 }}>
+            {results.map(p => (
+              <div key={p.id} onClick={() => addToCart(p)}
+                className={flashId === p.id ? "flash" : ""}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "8px 10px", borderRadius: 8, cursor: "pointer" }}
+                onMouseEnter={e => e.currentTarget.style.background = C.accent + "11"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: ".9rem" }}>{p.name}</div>
+                  <div style={{ fontSize: ".73rem", color: C.muted }}>
+                    {p.barcode ? `#${p.barcode} · ` : "No barcode · "}
+                    Stock: {p.stock} {p.unit}
+                    {p.stock <= p.lowAt && <span style={{ color: C.warn }}> ⚠ Low</span>}
+                  </div>
+                </div>
+                <span style={{ fontWeight: 700, color: C.accent, fontSize: ".95rem", flexShrink: 0, marginLeft: 8 }}>
+                  {fmtPKR(p.price)}
+                </span>
+              </div>
+            ))}
+          </Card>
+        )}
+
+        {/* quick-add grid */}
+        {!query && (
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            <p style={{ color: C.muted, fontSize: ".75rem", marginBottom: 8 }}>QUICK ADD</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 8 }}>
+              {products.map(p => (
+                <div key={p.id} onClick={() => addToCart(p)}
+                  className={flashId === p.id ? "flash" : ""}
+                  style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10,
+                    padding: "10px 12px", cursor: "pointer", transition: "border-color .15s" }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = C.accent}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
+                  <div style={{ fontWeight: 600, fontSize: ".85rem", marginBottom: 2 }}>{p.name}</div>
+                  <div style={{ fontSize: ".73rem", color: C.muted, marginBottom: 6 }}>
+                    {p.stock} {p.unit} left {p.stock <= p.lowAt && <span style={{ color: C.warn }}>⚠</span>}
+                  </div>
+                  <div style={{ fontWeight: 700, color: C.accent }}>{fmtPKR(p.price)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* desktop cart sidebar */}
+      {!isMobile && (
+        <CartPanel
+          isMobile={false} cart={cart} total={total}
+          payMode={payMode} setPayMode={setPayMode}
+          cashGiven={cashGiven} setCashGiven={setCashGiven}
+          customers={customers} selCust={selCust} setSelCust={setSelCust}
+          changeQty={changeQty} removeItem={removeItem}
+          onClearCart={() => setCart([])}
+          onCheckout={checkout}
+          onClose={null}
+        />
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVENTORY
+// ════════════════════════════════════════════════════════════════════════════
+function Inventory({ products, setProducts, toast }) {
+  const blank = { name: "", barcode: "", price: "", stock: "", lowAt: "5", unit: "pcs" };
+  const [form,    setForm]    = useState(blank);
+  const [editId,  setEditId]  = useState(null);
+  const [showCam, setShowCam] = useState(false);
+  const [filter,  setFilter]  = useState("");
+  const isMobile = useIsMobile();
+
+  const save = () => {
+    if (!form.name.trim() || !form.price) return;
+    const parsed = { ...form, price: +form.price, stock: +form.stock, lowAt: +form.lowAt };
+    if (editId) {
+      setProducts(p => p.map(x => x.id === editId ? { ...parsed, id: editId } : x));
+      setEditId(null);
+    } else {
+      setProducts(p => [...p, { ...parsed, id: uid() }]);
+    }
+    setForm(blank);
+    toast(editId ? "Product updated" : "Product added");
+  };
+
+  const edit = (p) => { setForm({ ...p, price: String(p.price), stock: String(p.stock), lowAt: String(p.lowAt) }); setEditId(p.id); };
+  const del  = (id) => { setProducts(p => p.filter(x => x.id !== id)); if (editId === id) { setEditId(null); setForm(blank); } toast("Deleted"); };
+
+  const filtered = products.filter(p =>
+    p.name.toLowerCase().includes(filter.toLowerCase()) ||
+    (p.barcode && p.barcode.includes(filter))
+  );
+  const lowStock = products.filter(p => p.stock <= p.lowAt);
+
+  return (
+    <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12, height: "100%", overflowY: isMobile ? "auto" : "hidden" }}>
+      {showCam && <CameraScanner onResult={c => { setForm(f => ({ ...f, barcode: c })); setShowCam(false); toast("Barcode captured"); }} onClose={() => setShowCam(false)} />}
+
+      <div style={{ width: isMobile ? "100%" : 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <Card>
+          <p style={{ fontWeight: 700, marginBottom: 12 }}>{editId ? "Edit Product" : "Add Product"}</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div><Lbl c="Name" /><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Product name" style={{ marginTop: 3 }} /></div>
+            <div>
+              <Lbl c="Barcode (optional)" />
+              <div style={{ display: "flex", gap: 6, marginTop: 3 }}>
+                <input value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} placeholder="Scan or type barcode" />
+                <button onClick={() => setShowCam(true)} style={{ background: C.border, border: "none", borderRadius: 8, padding: "0 10px", fontSize: "1.1rem", cursor: "pointer", flexShrink: 0 }}>📷</button>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div><Lbl c="Price (Rs)" /><input type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="0" style={{ marginTop: 3 }} /></div>
+              <div><Lbl c="Unit" /><select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={{ marginTop: 3 }}>
+                {["pcs", "kg", "g", "L", "ml", "dozen"].map(u => <option key={u}>{u}</option>)}
+              </select></div>
+              <div><Lbl c="Stock" /><input type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} placeholder="0" style={{ marginTop: 3 }} /></div>
+              <div><Lbl c="Alert below" /><input type="number" value={form.lowAt} onChange={e => setForm({ ...form, lowAt: e.target.value })} placeholder="5" style={{ marginTop: 3 }} /></div>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <Btn onClick={save}>{editId ? "Update" : "Add"}</Btn>
+              {editId && <Btn variant="ghost" onClick={() => { setEditId(null); setForm(blank); }}>Cancel</Btn>}
+            </div>
+          </div>
+        </Card>
+
+        {lowStock.length > 0 && (
+          <Card style={{ borderColor: C.warn + "66", background: C.warn + "08" }}>
+            <p style={{ fontWeight: 700, color: C.warn, marginBottom: 8 }}>⚠ Low Stock ({lowStock.length})</p>
+            {lowStock.map(p => (
+              <div key={p.id} style={{ fontSize: ".8rem", padding: "3px 0", display: "flex", justifyContent: "space-between" }}>
+                <span>{p.name}</span>
+                <span style={{ color: C.warn, fontWeight: 600 }}>{p.stock} {p.unit}</span>
+              </div>
+            ))}
+          </Card>
+        )}
+      </div>
+
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minWidth: 0, ...(isMobile ? {} : { overflow: "hidden" }) }}>
+        <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search products or barcode…" />
+        <Card style={{ flex: 1, overflowY: "auto", padding: 0 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                {(isMobile ? ["Product", "Price", "Stock", ""] : ["Product", "Barcode", "Price", "Stock", "Alert at", ""]).map(h => (
+                  <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: ".73rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: C.muted }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(p => (
+                <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}` }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.accent + "08"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <td style={{ padding: "10px 12px", fontWeight: 600, fontSize: ".875rem" }}>{p.name}</td>
+                  {!isMobile && <td style={{ padding: "10px 12px", fontSize: ".78rem", color: C.muted, fontFamily: "monospace" }}>{p.barcode || <span style={{ color: C.border }}>—</span>}</td>}
+                  <td style={{ padding: "10px 12px", fontWeight: 700, color: C.accent }}>{fmtPKR(p.price)}</td>
+                  <td style={{ padding: "10px 12px" }}>
+                    <span style={{ color: p.stock <= p.lowAt ? C.warn : C.text, fontWeight: p.stock <= p.lowAt ? 700 : 400 }}>
+                      {p.stock} {p.unit}{p.stock <= p.lowAt ? " ⚠" : ""}
+                    </span>
+                  </td>
+                  {!isMobile && <td style={{ padding: "10px 12px", color: C.muted, fontSize: ".85rem" }}>{p.lowAt} {p.unit}</td>}
+                  <td style={{ padding: "10px 12px" }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Btn small variant="ghost" onClick={() => edit(p)}>Edit</Btn>
+                      <Btn small variant="danger" onClick={() => del(p.id)}>Del</Btn>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && <p style={{ color: C.muted, textAlign: "center", padding: "2rem" }}>No products found.</p>}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// UDHAAR
+// ════════════════════════════════════════════════════════════════════════════
+function Udhaar({ customers, setCustomers, sales, toast }) {
+  const [selId,         setSelId]         = useState(null);
+  const [addForm,       setAddForm]       = useState({ name: "", phone: "" });
+  const [payAmt,        setPayAmt]        = useState("");
+  const [addUdhaarAmt,  setAddUdhaarAmt]  = useState("");
+  const isMobile  = useIsMobile();
+  const [mobileView, setMobileView] = useState("list");
+
+  const sel         = customers.find(c => c.id === selId);
+  const totalUdhaar = customers.reduce((s, c) => s + c.balance, 0);
+  const custSales   = sales.filter(s => s.payMode === "udhaar" && s.customerId === selId);
+
+  const addCustomer = () => {
+    if (!addForm.name.trim()) return;
+    setCustomers(c => [...c, { id: uid(), name: addForm.name, phone: addForm.phone, balance: 0 }]);
+    setAddForm({ name: "", phone: "" }); toast("Customer added");
+  };
+  const recordPayment = () => {
+    const amt = parseFloat(payAmt); if (!amt || !selId) return;
+    setCustomers(c => c.map(x => x.id === selId ? { ...x, balance: Math.max(0, x.balance - amt) } : x));
+    setPayAmt(""); toast(`Rs ${amt} payment recorded`);
+  };
+  const addUdhaar = () => {
+    const amt = parseFloat(addUdhaarAmt); if (!amt || !selId) return;
+    setCustomers(c => c.map(x => x.id === selId ? { ...x, balance: x.balance + amt } : x));
+    setAddUdhaarAmt(""); toast(`Rs ${amt} udhaar added`);
+  };
+  const delCustomer = (id) => {
+    setCustomers(c => c.filter(x => x.id !== id));
+    if (selId === id) { setSelId(null); setMobileView("list"); } toast("Removed");
+  };
+  const selectCustomer = (id) => { setSelId(id); if (isMobile) setMobileView("detail"); };
+
+  const CustomerList = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, width: isMobile ? "100%" : 280, flexShrink: 0 }}>
+      <Card>
+        <p style={{ fontWeight: 700, marginBottom: 10 }}>Add Customer</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div><Lbl c="Name" /><input value={addForm.name} onChange={e => setAddForm({ ...addForm, name: e.target.value })} placeholder="Ahmed Bhai" style={{ marginTop: 3 }} /></div>
+          <div><Lbl c="Phone (optional)" /><input value={addForm.phone} onChange={e => setAddForm({ ...addForm, phone: e.target.value })} placeholder="0300-0000000" style={{ marginTop: 3 }} /></div>
+          <Btn onClick={addCustomer}>Add</Btn>
+        </div>
+      </Card>
+      <Card style={{ background: C.danger + "0a", borderColor: C.danger + "33" }}>
+        <p style={{ fontSize: ".78rem", color: C.muted, fontWeight: 600 }}>TOTAL OUTSTANDING</p>
+        <p style={{ fontSize: "1.5rem", fontWeight: 800, color: C.danger }}>{fmtPKR(totalUdhaar)}</p>
+      </Card>
+      <Card style={{ flex: 1, overflowY: "auto", padding: 6 }}>
+        {customers.length === 0 && <p style={{ color: C.muted, fontSize: ".85rem", padding: 8 }}>No customers yet.</p>}
+        {customers.map(c => (
+          <div key={c.id} onClick={() => selectCustomer(c.id)}
+            style={{ padding: "10px", borderRadius: 8, cursor: "pointer", marginBottom: 2,
+              background: selId === c.id ? C.accent + "18" : "transparent",
+              border: `1px solid ${selId === c.id ? C.accent + "44" : "transparent"}`, transition: "all .1s" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: ".875rem" }}>{c.name}</div>
+                {c.phone && <div style={{ fontSize: ".73rem", color: C.muted }}>{c.phone}</div>}
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontWeight: 700, color: c.balance > 0 ? C.danger : C.accent, fontSize: ".875rem" }}>{fmtPKR(c.balance)}</div>
+                {c.balance === 0 && <div style={{ fontSize: ".7rem", color: C.accent }}>Clear ✓</div>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+
+  const CustomerDetail = () => (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+      {!sel ? (
+        <Card style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <p style={{ color: C.muted }}>Select a customer to view their account</p>
+        </Card>
+      ) : (
+        <>
+          <Card>
+            {isMobile && <button onClick={() => setMobileView("list")} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", marginBottom: 8, fontSize: ".85rem" }}>← Back</button>}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <p style={{ fontWeight: 800, fontSize: "1.1rem" }}>{sel.name}</p>
+                {sel.phone && <p style={{ color: C.muted, fontSize: ".85rem" }}>{sel.phone}</p>}
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: ".78rem", color: C.muted }}>Balance Owed</div>
+                <div style={{ fontSize: "1.6rem", fontWeight: 800, color: sel.balance > 0 ? C.danger : C.accent }}>{fmtPKR(sel.balance)}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+              <div style={{ flex: 1 }}>
+                <Lbl c="Record Payment" />
+                <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                  <input type="number" value={payAmt} onChange={e => setPayAmt(e.target.value)} placeholder="Amount paid" />
+                  <Btn onClick={recordPayment} style={{ flexShrink: 0 }}>✓ Paid</Btn>
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <Lbl c="Add Udhaar Manually" />
+                <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                  <input type="number" value={addUdhaarAmt} onChange={e => setAddUdhaarAmt(e.target.value)} placeholder="Amount" />
+                  <Btn variant="warn" onClick={addUdhaar} style={{ flexShrink: 0 }}>+ Add</Btn>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-end" }}>
+                <Btn variant="danger" small onClick={() => delCustomer(sel.id)}>Remove</Btn>
+              </div>
+            </div>
+          </Card>
+          <Card style={{ flex: 1, overflowY: "auto", padding: 0 }}>
+            <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: ".875rem" }}>Udhaar Sales History</div>
+            {custSales.length === 0 && <p style={{ color: C.muted, padding: "1rem 14px", fontSize: ".875rem" }}>No udhaar sales recorded yet.</p>}
+            {custSales.slice().reverse().map(s => (
+              <div key={s.id} style={{ padding: "10px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: ".85rem", fontWeight: 600 }}>{s.items.map(i => i.name).join(", ").slice(0, 50)}</div>
+                  <div style={{ fontSize: ".75rem", color: C.muted }}>{new Date(s.ts).toLocaleString("en-PK")}</div>
+                </div>
+                <span style={{ fontWeight: 700, color: C.danger }}>{fmtPKR(s.total)}</span>
+              </div>
+            ))}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+
+  if (isMobile) return <div style={{ height: "100%", overflowY: "auto" }}>{mobileView === "list" ? <CustomerList /> : <CustomerDetail />}</div>;
+  return <div style={{ display: "flex", gap: 12, height: "100%" }}><CustomerList /><CustomerDetail /></div>;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SUMMARY
+// ════════════════════════════════════════════════════════════════════════════
+function Summary({ sales }) {
+  const todayStart  = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todaySales  = sales.filter(s => new Date(s.ts) >= todayStart);
+  const totalCash   = todaySales.filter(s => s.payMode === "cash").reduce((s, x) => s + x.total, 0);
+  const totalUdhaar = todaySales.filter(s => s.payMode === "udhaar").reduce((s, x) => s + x.total, 0);
+
+  const itemMap = {};
+  todaySales.forEach(s => s.items.forEach(it => {
+    if (!itemMap[it.name]) itemMap[it.name] = { name: it.name, qty: 0, rev: 0 };
+    itemMap[it.name].qty += it.qty; itemMap[it.name].rev += it.qty * it.price;
+  }));
+  const topItems = Object.values(itemMap).sort((a, b) => b.rev - a.rev).slice(0, 5);
+
+  const stats = [
+    { label: "Cash Collected",   value: fmtPKR(totalCash),              color: C.accent },
+    { label: "Udhaar Given",     value: fmtPKR(totalUdhaar),             color: C.danger },
+    { label: "Total Sales",      value: fmtPKR(totalCash + totalUdhaar), color: C.text   },
+    { label: "Transactions",     value: todaySales.length,               color: C.warn   },
+  ];
+
+  return (
+    <div style={{ height: "100%", overflowY: "auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <h2 style={{ fontWeight: 800, fontSize: "1.1rem" }}>Today's Summary</h2>
+        <span style={{ color: C.muted, fontSize: ".85rem" }}>{todayStr()}</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 14 }}>
+        {stats.map(s => (
+          <Card key={s.label}><Lbl c={s.label} /><div style={{ fontSize: "1.4rem", fontWeight: 800, color: s.color, marginTop: 4 }}>{s.value}</div></Card>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 10 }}>
+        <Card>
+          <p style={{ fontWeight: 700, marginBottom: 10 }}>Top Selling Items</p>
+          {topItems.length === 0 && <p style={{ color: C.muted, fontSize: ".85rem" }}>No sales today yet.</p>}
+          {topItems.map((it, i) => (
+            <div key={it.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ color: C.muted, fontWeight: 700, width: 18, fontSize: ".8rem" }}>{i + 1}</span>
+                <div><div style={{ fontWeight: 600, fontSize: ".875rem" }}>{it.name}</div><div style={{ fontSize: ".73rem", color: C.muted }}>Qty: {it.qty}</div></div>
+              </div>
+              <span style={{ fontWeight: 700, color: C.accent, fontSize: ".9rem" }}>{fmtPKR(it.rev)}</span>
+            </div>
+          ))}
+        </Card>
+        <Card>
+          <p style={{ fontWeight: 700, marginBottom: 10 }}>Recent Transactions</p>
+          {todaySales.length === 0 && <p style={{ color: C.muted, fontSize: ".85rem" }}>No transactions yet.</p>}
+          {todaySales.slice().reverse().slice(0, 8).map(s => (
+            <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${C.border}` }}>
+              <div>
+                <div style={{ fontSize: ".8rem", fontWeight: 600 }}>
+                  {s.items.length} item{s.items.length !== 1 ? "s" : ""}
+                  <span style={{ marginLeft: 6, fontSize: ".7rem", borderRadius: 4, padding: "1px 6px", fontWeight: 700,
+                    color: s.payMode === "cash" ? C.accent : C.danger,
+                    background: s.payMode === "cash" ? C.accent + "18" : C.danger + "18" }}>
+                    {s.payMode}
+                  </span>
+                </div>
+                <div style={{ fontSize: ".73rem", color: C.muted }}>{new Date(s.ts).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit" })}</div>
+              </div>
+              <span style={{ fontWeight: 700, fontSize: ".9rem" }}>{fmtPKR(s.total)}</span>
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ROOT
+// ════════════════════════════════════════════════════════════════════════════
+export default function App() {
+  const [tab,       setTab]       = useState("pos");
+  const [products,  setProducts]  = useLS("dukan_products",  SEED_PRODUCTS);
+  const [customers, setCustomers] = useLS("dukan_customers", SEED_CUSTOMERS);
+  const [sales,     setSales]     = useLS("dukan_sales",     []);
+  const [toastMsg,  setToastMsg]  = useState(null);
+  const isMobile = useIsMobile();
+
+  const toast = (msg) => setToastMsg(msg);
+
+  const handleSales = (newSales) => {
+    const last = newSales[newSales.length - 1];
+    if (last?.payMode === "udhaar" && last.customerId) {
+      setCustomers(c => c.map(x => x.id === last.customerId ? { ...x, balance: x.balance + last.total } : x));
+    }
+    setSales(newSales);
+  };
+
+  return (
+    <>
+      <style>{STYLE}</style>
+      {toastMsg && <Toast msg={toastMsg} onDone={() => setToastMsg(null)} />}
+      <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+        {/* header */}
+        <div style={{ background: C.panel, borderBottom: `1px solid ${C.border}`,
+          padding: "0 16px", display: "flex", alignItems: "center", flexShrink: 0 }}>
+          <div style={{ padding: "12px 0", marginRight: isMobile ? 8 : 24, flexShrink: 0 }}>
+            <span style={{ fontWeight: 800, fontSize: "1rem", color: C.accent }}>دکان</span>
+            {!isMobile && <span style={{ fontWeight: 800, color: C.text }}> POS</span>}
+          </div>
+          <div style={{ display: "flex", flex: 1 }}>
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                padding: isMobile ? "14px 10px" : "14px 18px", background: "transparent", border: "none",
+                borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`,
+                color: tab === t.id ? C.accent : C.muted, fontWeight: tab === t.id ? 700 : 400,
+                fontSize: isMobile ? ".78rem" : ".875rem", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 4, transition: "all .15s", flexShrink: 0,
+              }}>{t.icon} {t.label}</button>
+            ))}
+          </div>
+          {!isMobile && <div style={{ fontSize: ".8rem", color: C.muted, marginLeft: "auto", flexShrink: 0 }}>{todayStr()}</div>}
+        </div>
+
+        <div style={{ flex: 1, overflow: "hidden", padding: isMobile ? "10px 12px" : "14px 20px" }}>
+          {tab === "pos"       && <POS products={products} setProducts={setProducts} customers={customers} sales={sales} setSales={handleSales} toast={toast} />}
+          {tab === "inventory" && <Inventory products={products} setProducts={setProducts} toast={toast} />}
+          {tab === "udhaar"    && <Udhaar customers={customers} setCustomers={setCustomers} sales={sales} toast={toast} />}
+          {tab === "summary"   && <Summary sales={sales} />}
+        </div>
+      </div>
+    </>
+  );
+}

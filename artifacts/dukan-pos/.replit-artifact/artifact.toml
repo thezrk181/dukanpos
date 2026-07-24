@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Dukan POS"
+version = "1.0.0"
+id = "artifacts/dukan-pos"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18473
+
+[services.development]
+run = "pnpm --filter @workspace/dukan-pos run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/dukan-pos", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/dukan-pos/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18473"
+BASE_PATH = "/"
