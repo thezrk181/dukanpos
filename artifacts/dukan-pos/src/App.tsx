@@ -70,7 +70,7 @@ function Shell({ children }: { children: ReactNode }) {
       <div className="absolute bottom-5 left-6 right-6 flex items-center gap-3 border-t border-sidebar-border pt-4"><div className="grid h-8 w-8 place-items-center rounded-full bg-[#dbe6dd] text-xs font-bold text-primary">AK</div><div className="min-w-0"><p className="truncate text-xs font-bold">Aamir Khan</p><p className="truncate text-[10px] text-[#91a0ac]">Al-Khan General Store</p></div><Settings2 size={15} className="ml-auto text-[#8e9aa5]" /></div>
     </aside>
     {open && <button aria-label="Close menu" data-testid="button-overlay-menu" onClick={() => setOpen(false)} className="no-print fixed inset-0 z-30 bg-[#182433]/50 md:hidden" />}
-    <main className="md:pl-[248px]">{children}</main>
+    <main className="md:pl-[248px] print:m-0 print:p-0">{children}</main>
     <nav className="no-print fixed bottom-0 left-0 right-0 z-20 border-t border-border bg-card/95 px-2 py-2 backdrop-blur md:hidden"><div className="grid grid-cols-4">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} data-testid={`mobile-link-${label.toLowerCase()}`} className={`flex flex-col items-center gap-1 py-1 text-[10px] font-semibold ${location === href ? 'text-primary' : 'text-muted-foreground'}`}><Icon size={19} /><span>{label}</span></Link>)}</div></nav>
     <button data-testid="button-open-menu" onClick={() => setOpen(true)} className="no-print fixed left-4 top-4 z-20 rounded-xl border border-border bg-card p-2.5 text-primary shadow-sm md:hidden"><Menu size={19} /></button>
   </div>;
@@ -198,6 +198,7 @@ function Modal({ title, children, onClose }: { title: string; children: ReactNod
 
 function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
   return <div className="receipt-overlay fixed inset-0 z-50 grid place-items-center bg-[#182433]/55 p-4">
+    <style>{`@media print { main > *:not(.receipt-overlay) { display: none !important; } }`}</style>
     <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-2xl animate-rise">
       <div className="no-print flex items-center justify-between"><div><p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Saved transaction</p><h2 className="mt-1 font-display text-2xl">Receipt ready</h2></div><button data-testid="button-close-receipt" onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><X size={18} /></button></div>
       <div className="print-receipt mt-5 rounded-xl border border-dashed border-border bg-[#fffdf8] p-5 font-mono text-xs">
