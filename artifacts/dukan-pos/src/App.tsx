@@ -405,14 +405,33 @@ function App() {
       if (p || c || s) {
         isSyncing.current = true; // prevent live push from bouncing this back
         setState((prev) => {
+          const mappedSales = s?.length ? s.map((x: any) => ({ ...x, customerId: x.customer_id, createdAt: x.created_at })) as Sale[] : [];
+          const allSales = [...prev.sales, ...mappedSales];
+          const uniqueSales = Array.from(new Map(allSales.map(item => [item.id, item])).values())
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
           const mappedProducts = p?.length ? p.map((x: any) => ({ ...x, sellBy: x.sell_by })) as Product[] : prev.products;
           const existingIds = new Set(mappedProducts.map(x => x.id));
           const missingSeeds = seed.products.filter(x => !existingIds.has(x.id));
           mappedProducts.push(...missingSeeds);
           
           const mergedCustomers = c?.length ? (c as Customer[]) : prev.customers;
-          const mappedSales = s?.length ? s.map((x: any) => ({ ...x, customerId: x.customer_id, createdAt: x.created_at })) as Sale[] : prev.sales;
-          return { products: mappedProducts, customers: mergedCustomers, sales: mappedSales };
+
+          // Offline-First Safety for Single Counter:
+          // If the local device has MORE sales than the cloud, it means this device was offline and has unsynced data.
+          // We must NOT overwrite its local products/customers with stale cloud data.
+          const hasOfflineData = prev.sales.length > mappedSales.length;
+
+          if (hasOfflineData) {
+            isSyncing.current = false; // Trigger Live Push to upload the offline data to the cloud!
+            return {
+              products: prev.products,
+              customers: prev.customers,
+              sales: uniqueSales
+            };
+          }
+
+          return { products: mappedProducts, customers: mergedCustomers, sales: uniqueSales };
         });
       }
     };
