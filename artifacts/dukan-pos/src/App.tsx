@@ -256,7 +256,7 @@ function Counter({ state, setState, notify, session }: { state: State; setState:
   const add = (p: Product) => { if (p.sellBy === 'weight') return setPromptQty({ product: p, currentQty: '' }); if (p.stock < 1) return notify('This item is out of stock'); setCart((c) => c.some((i) => i.productId === p.id) ? c.map((i) => i.productId === p.id ? { ...i, qty: Math.min(i.qty + 1, p.stock) } : i) : [...c, { productId: p.id, qty: 1 }]); notify(`${p.name} added to basket`); };
   const handleScan = useCallback((code: string) => { setScanner(false); const cleaned = code.trim(); const match = state.products.find((p) => p.barcode === cleaned); if (match) { add(match); return; } setQuery(cleaned); notify(`Barcode ${cleaned} not found — showing search results`); }, [state.products, notify]);
   const setQty = (id: string, qty: number) => setCart((c) => qty <= 0 ? c.filter((i) => i.productId !== id) : c.map((i) => i.productId === id ? { ...i, qty } : i));
-  const complete = () => { if (!cartRows.length) return; if (checkout === 'udhaar' && !customer) return notify('Choose a customer for udhaar'); const paidValue = checkout === 'cash' ? Number(paid || total) : 0; if (checkout === 'cash' && paidValue < total) return notify(`Cash is short by ${money(total - paidValue)}`); const sale: Sale = { id: `s-${Date.now()}`, items: cartRows.map((i) => ({ productId: i.product.id, name: i.product.name, qty: i.qty, price: i.product.price })), total, paid: paidValue, type: checkout || 'cash', customerId: checkout === 'udhaar' ? customer : undefined, createdAt: new Date().toISOString() }; setState((s) => ({ ...s, sales: [sale, ...s.sales], products: s.products.map((p) => { const item = cart.find((i) => i.productId === p.id); return item ? { ...p, stock: p.stock - item.qty } : p; }), customers: checkout === 'udhaar' ? s.customers.map((c) => c.id === customer ? { ...c, balance: c.balance + total } : c) : s.customers })); setReceipt(sale); setCart([]); setCheckout(null); setPaid(''); setCustomer(''); notify(checkout === 'udhaar' ? 'Udhaar recorded' : 'Sale completed'); };
+  const complete = () => { if (!cartRows.length) return; if (checkout === 'udhaar' && !customer) return notify('Choose a customer for udhaar'); const paidValue = checkout === 'cash' ? Number(paid || total) : 0; if (checkout === 'cash' && paidValue < total) return notify(`Cash is short by ${money(total - paidValue)}`); const sale: Sale = { id: `s-${Date.now()}`, items: cartRows.map((i) => ({ productId: i.product.id, name: i.product.name, qty: i.qty, price: i.product.price })), total, paid: paidValue, type: checkout || 'cash', customerId: checkout === 'udhaar' ? customer : undefined, createdAt: new Date().toISOString() }; setState((s) => ({ ...s, sales: [sale, ...s.sales].slice(0, 1000), products: s.products.map((p) => { const item = cart.find((i) => i.productId === p.id); return item ? { ...p, stock: p.stock - item.qty } : p; }), customers: checkout === 'udhaar' ? s.customers.map((c) => c.id === customer ? { ...c, balance: c.balance + total } : c) : s.customers })); setReceipt(sale); setCart([]); setCheckout(null); setPaid(''); setCustomer(''); notify(checkout === 'udhaar' ? 'Udhaar recorded' : 'Sale completed'); };
   return <><Topbar eyebrow={dateLabel()} title={`Good ${new Date().getHours() < 12 ? 'morning' : 'afternoon'}, ${session?.user?.user_metadata?.ownerName?.split(' ')[0] || 'there'}`} action={<button data-testid="button-scan" onClick={() => setScanner(true)} className="mt-1 flex items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm font-bold text-primary shadow-sm hover:bg-muted"><ScanBarcode size={17} /> <span className="hidden sm:inline">Scan item</span></button>} />
     <div className="grid gap-5 p-5 pb-24 md:grid-cols-[1fr_390px] md:gap-7 md:p-9">
       <section className="min-w-0">
@@ -401,14 +401,15 @@ function App() {
     
     const sync = async () => {
       // PULL initial data
-      const [{ data: p }, { data: c }, { data: s }] = await Promise.all([ supabase.from('products').select('*'), supabase.from('customers').select('*'), supabase.from('sales').select('*') ]);
+      const [{ data: p }, { data: c }, { data: s }] = await Promise.all([ supabase.from('products').select('*'), supabase.from('customers').select('*'), supabase.from('sales').select('*').order('created_at', { ascending: false }).limit(1000) ]);
       if (p || c || s) {
         isSyncing.current = true; // prevent live push from bouncing this back
         setState((prev) => {
           const mappedSales = s?.length ? s.map((x: any) => ({ ...x, customerId: x.customer_id, createdAt: x.created_at })) as Sale[] : [];
           const allSales = [...prev.sales, ...mappedSales];
           const uniqueSales = Array.from(new Map(allSales.map(item => [item.id, item])).values())
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 1000);
 
           const mappedProducts = p?.length ? p.map((x: any) => ({ ...x, sellBy: x.sell_by })) as Product[] : prev.products;
           const existingIds = new Set(mappedProducts.map(x => x.id));
@@ -458,7 +459,7 @@ function App() {
           const mapped = { ...row, customerId: row.customer_id, createdAt: row.created_at } as Sale;
           const exists = prev.sales.some(s => s.id === mapped.id);
           if (exists && JSON.stringify(prev.sales.find(s => s.id === mapped.id)) === JSON.stringify(mapped)) return prev;
-          return { ...prev, sales: exists ? prev.sales.map(s => s.id === mapped.id ? mapped : s) : [mapped, ...prev.sales] };
+          return { ...prev, sales: exists ? prev.sales.map(s => s.id === mapped.id ? mapped : s) : [mapped, ...prev.sales].slice(0, 1000) };
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: `user_id=eq.${u}` }, (payload) => {
