@@ -393,6 +393,7 @@ function App() {
   }, []);
 
   const isSyncing = useRef(false);
+  const isInitialMount = useRef(true);
 
   // Sync Engine (Pull & Realtime Subscribe)
   useEffect(() => {
@@ -483,6 +484,11 @@ function App() {
     localStorage.setItem('dukan-pos-state', JSON.stringify(state));
     if (!session?.user) return;
     
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
     // Prevent bouncing the data back to Supabase if the state change came from a Sync or Realtime payload
     if (isSyncing.current) {
       isSyncing.current = false;
